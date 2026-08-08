@@ -195,7 +195,7 @@ const MM = {
   },
   _poly: {}, pairs: [],
   units: null, elUnits: null,
-  raf: 0, last: 0, running: false,
+  raf: 0, last: 0, t: 0, nextKill: 0, running: false,
 };
 
 const MM_SPD = { top: 0.058, mid: 0.078, bot: 0.055, sup: 0.048, jgl: 0.088 };
@@ -238,7 +238,7 @@ function createUnit(t) {
   const lane = t.role === "jgl" ? null : (t.role === "bot" || t.role === "sup") ? "bot" : t.role;
   const u = {
     team: t.team, role: t.role, lane,
-    w: t.w, me: !!t.me,
+    w: t.w, me: !!t.me, name: t.w.name,
     x: (t.team === "blue" ? MM.geo.baseB : MM.geo.baseR).x,
     y: (t.team === "blue" ? MM.geo.baseB : MM.geo.baseR).y,
     hp: 1, dead: false,
@@ -250,6 +250,15 @@ function createUnit(t) {
     u.lane = lane;
     u.p = t.team === "blue" ? MM.geo.turret.home : MM.geo.turret.enemy;
     u.spd = MM_SPD[u.role];
+    /* each laner has its own safe zone, so waves crash mid-lane instead of
+       everyone standing on top of each other */
+    if (t.team === "blue") {
+      u.min = mmRand(0.12, 0.18);
+      u.max = mmRand(0.52, 0.62);
+    } else {
+      u.min = mmRand(0.38, 0.48);
+      u.max = mmRand(0.82, 0.88);
+    }
   } else {
     u.camps = t.team === "blue" ? MM.geo.campsB.slice() : MM.geo.campsR.slice();
     u.ci = 0;
@@ -295,9 +304,8 @@ function stepUnitSim(u, dt) {
   if (u.lane) {
     const d = u.team === "blue" ? 1 : -1;
     u.p += d * u.spd * dt;
-    const lo = 0.10, hi = 0.90;
-    if (u.p >= hi) { u.p = hi; u.pause = mmRand(0.3, 2.2); }
-    if (u.p <= lo) { u.p = lo; u.pause = mmRand(0.3, 2.4); }
+    if (u.p >= u.max) { u.p = u.max; u.pause = mmRand(0.8, 2.6); }
+    if (u.p <= u.min) { u.p = u.min; u.pause = mmRand(0.8, 2.6); }
     const pos = samplePt(u.lane, u.p);
     u.x = pos.x;
     u.y = pos.y + (u.role === "sup" ? 0.018 : u.role === "bot" ? -0.02 : 0);
@@ -319,7 +327,7 @@ function stepUnitSim(u, dt) {
       mmSpark(u.x, u.y, u.team === "blue" ? "#59d0a0" : "#e8a04a", "");
       u.ci = ++u.ci % u.camps.length;
       u.count++;
-      if (u.count % 3 === 0 && Math.random() < 0.65) {
+      if (u.count % 4 === 0 && Math.random() < 0.4) {
         const cand = MM.units.filter(o =>
           o.team !== u.team && !o.dead && o.lane && (o.team === "blue" ? o.p > 0.5 : o.p < 0.5));
         if (cand.length) {
@@ -355,7 +363,7 @@ function mmPlayerSlain(killer) {
 
 function mmKill(winner, victim) {
   victim.dead = true;
-  victim.rev = mmRand(4, 9);
+  victim.rev = mmRand(12, 20);
   victim.hp = 0;
   victim.el.classList.add("dead");
   mmSpark(victim.x, victim.y, victim.team === "blue" ? "#ff6172" : "#3fd0ff", "kill");
@@ -379,12 +387,13 @@ function resolvePair(p) {
   const A = p.A, B = p.B;
   A.el.classList.remove("fight");
   B.el.classList.remove("fight");
-  A.cool = B.cool = mmRand(1, 2.5);
-  if (Math.random() < 0.42) {
+  A.cool = B.cool = mmRand(3, 7);
+  if (Math.random() < 0.18 && MM.t >= MM.nextKill) {
     const wA = A.hp / (A.hp + B.hp);
     const winner = Math.random() < wA ? A : B;
     const victim = winner === A ? B : A;
     mmKill(winner, victim);
+    MM.nextKill = MM.t + mmRand(9, 15);
   } else {
     mmSpark((A.x + B.x) / 2, (A.y + B.y) / 2, "#ffe066", "miss");
   }
@@ -413,10 +422,11 @@ function tickFightsSim(dt) {
       const d = Math.hypot(A.x - B.x, A.y - B.y);
       const max = (A.lane && B.lane && A.lane === B.lane) ? 0.13 : 0.10;
       if (d > max) continue;
-      MM.pairs.push({ A, B, t: 0, dur: mmRand(0.6, 1.3) });
+      MM.pairs.push({ A, B, t: 0, dur: mmRand(0.8, 1.5) });
       A.cool = B.cool = 0.3;
       A.el.classList.add("fight");
       B.el.classList.add("fight");
+      break;
     }
   }
 }
@@ -425,6 +435,7 @@ function frameMmSim(now) {
   if (!MM.running) return;
   const dt = Math.min(0.25, (now - MM.last) / 1000 || 0.016);
   MM.last = now;
+  MM.t += dt;
   tickFightsSim(dt);
   for (const u of MM.units) stepUnitSim(u, dt);
   for (const u of MM.units) {
@@ -451,7 +462,7 @@ function startSim() {
   ];
   blue.forEach((t) => MM.units.push(createUnit({ team: "blue", ...t })));
   red.forEach((t) => MM.units.push(createUnit({ team: "red", ...t })));
-  MM.running = true; MM.last = 0; MM.pairs = [];
+  MM.running = true; MM.last = 0; MM.t = 0; MM.nextKill = 5; MM.pairs = [];
   const st = document.querySelector(".mm-live");
   if (st) st.classList.remove("off");
   MM.raf = requestAnimationFrame(frameMmSim);
