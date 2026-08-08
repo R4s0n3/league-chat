@@ -4,7 +4,7 @@
   "description": "League of Legends in-game chat simulator with OpenRouter LLM replies",
   "main": "server.js",
   "scripts": {
-    "start": "bun run server.js",
+    "start": "node server.js",
     "dev": "bun --watch server.js"
   },
   "license": "MIT",
