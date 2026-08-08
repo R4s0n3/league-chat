@@ -77,6 +77,24 @@ const $ = id => document.getElementById(id);
 const pick = a => a[Math.floor(Math.random() * a.length)];
 const withP = t => t.replace(/\{p\}/g, S.playerName);
 
+/* ==================== MOBILE VIEWPORT ==================== */
+/* Keep the app pinned to the live viewport so the chat input never
+   disappears under the on-screen keyboard / browser toolbars. */
+function fitViewport() {
+  if (window.innerWidth >= 861) return;
+  const vv = window.visualViewport;
+  const h = (vv && vv.height) ? vv.height : window.innerHeight;
+  document.documentElement.style.setProperty("--app-h", h + "px");
+  if (window.scrollTo) window.scrollTo(0, 0);
+}
+function wireViewport() {
+  fitViewport();
+  const vv = window.visualViewport;
+  const target = vv || window;
+  target.addEventListener("resize", fitViewport);
+  if (vv) vv.addEventListener("scroll", fitViewport);
+}
+
 function tNow() {
   const m = String(Math.floor(S.sec / 60)).padStart(2, "0");
   const s = String(S.sec % 60).padStart(2, "0");
@@ -449,6 +467,8 @@ function leaveGame() {
 
 /* ==================== BINDINGS ==================== */
 document.addEventListener("DOMContentLoaded", () => {
+  wireViewport();
+
   S.playerName = $("nameInput").value.trim() || "ImCasual";
   S.myCh = CHAMPIONS[parseInt($("champSelect").value, 10) || 0];
   fillChampSelect();

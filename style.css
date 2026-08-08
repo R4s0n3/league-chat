@@ -9,6 +9,9 @@
   --text:#cdd6e4;
   --dim:#7a8599;
   --hex-size:42px;
+  --app-h:100vh;
+  --safe-top:env(safe-area-inset-top, 0px);
+  --safe-bottom:env(safe-area-inset-bottom, 0px);
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%}
@@ -18,6 +21,7 @@ body{
   color:var(--text);
   overflow:hidden;
   -webkit-font-smoothing:antialiased;
+  -webkit-tap-highlight-color:transparent;
 }
 
 /* hextech background */
@@ -34,13 +38,14 @@ body::before{
 }
 
 /* ---------- screens ---------- */
-.screen{position:fixed;inset:0;z-index:1;display:none}
+.screen{position:fixed;top:0;left:0;right:0;height:var(--app-h,100vh);z-index:1;display:none}
 .screen.active{display:flex}
 
 /* ---------- lobby ---------- */
 #pick-lobby{align-items:center;justify-content:center}
 .lobby-box{
-  width:min(860px,94vw);
+  width:min(860px, calc(100vw - 40px));
+  margin:auto;
   background:linear-gradient(180deg, rgba(13,20,42,.96), rgba(8,12,28,.96));
   border:1px solid rgba(200,170,110,.35);
   border-top:3px solid var(--gold);
@@ -136,7 +141,7 @@ body::before{
 .topbar{
   position:fixed;top:0;left:0;right:0;z-index:5;
   display:flex;align-items:center;gap:16px;
-  padding:8px 18px;
+  padding:calc(8px + var(--safe-top)) 18px 8px;
   background:linear-gradient(180deg, rgba(8,12,26,.95), rgba(8,12,26,.7));
   border-bottom:1px solid rgba(200,160,110,.3);
 }
@@ -151,8 +156,8 @@ body::before{
 
 /* ---------- chat layout ---------- */
 .chat-layout{
-  position:fixed;inset:0;z-index:2;
-  padding:64px 18px 6px;
+  position:fixed;top:0;left:0;right:0;height:var(--app-h,100vh);z-index:2;
+  padding:64px 18px calc(6px + var(--safe-bottom));
   display:flex;gap:18px;
   pointer-events:none;
 }
@@ -209,7 +214,7 @@ body::before{
 
 .inputbar{display:flex;align-items:center;gap:8px;padding:9px 12px;background:var(--panel);border-top:1px solid rgba(200,160,110,.35)}
 .ch-input{color:var(--gold);font-weight:700;font-size:14px;letter-spacing:1px}
-.inputbar input{flex:1;background:rgba(4,7,16,.8);border:1px solid rgba(100,120,170,.45);color:var(--text);padding:8px 10px;font-size:15px}
+.inputbar input{flex:1;background:rgba(4,7,16,.8);border:1px solid rgba(100,120,170,.45);color:var(--text);padding:10px 12px;font-size:16px}
 .inputbar input:focus{outline:none;border-color:var(--gold);box-shadow:0 0 8px rgba(200,160,110,.25)}
 
 /* ---------- sidebar ---------- */
@@ -289,3 +294,47 @@ body::before{
 .banner.blue{color:#bff4ff;background:linear-gradient(180deg,rgba(7,10,20,0),rgba(0,120,180,.5),rgba(7,10,20,0))}
 
 .hidden{display:none !important}
+
+/* ---------- touch handling ---------- */
+button,input,select,.tab,.style-btn{touch-action:manipulation}
+.btn-primary,.btn-ghost,.style-btn,.tab,.field input,.field select,.inputbar input{min-height:44px}
+
+/* ---------- responsive ---------- */
+@media (max-width:860px){
+  .screen{overflow-y:auto}
+  #screen-lobby{flex-direction:column}
+
+  .topbar{gap:10px;padding:calc(8px + var(--safe-top)) 12px 8px}
+  .tb-center{display:none}
+  .clock{font-size:19px}
+
+  .chat-layout{padding:60px 10px calc(6px + var(--safe-bottom));gap:0}
+  .chatpanel{width:100%;max-width:100%}
+  .chat-head{padding:10px}
+  .tab{padding:6px 14px;font-size:14px}
+  .inputbar{padding:10px}
+  .inputbar input{min-width:0}
+  .log{padding:10px 12px;font-size:15px}
+  .msg{font-size:15px}
+  .msg .t{width:42px;font-size:12px}
+
+  .lobby-box{padding:18px 16px;width:min(860px,calc(100vw - 24px))}
+  .lobby-header{flex-wrap:wrap;gap:10px}
+  .lobby-header h1{font-size:17px;letter-spacing:2px}
+  .btn-ghost{margin-left:auto}
+
+  .lobby-controls{flex-direction:column;align-items:stretch;gap:12px}
+  .stylepick button{flex:1}
+  .btn-primary{width:100%;padding:13px;font-size:16px}
+
+  .roster{grid-template-columns:1fr 1fr;gap:10px}
+  .roster-item{gap:8px;padding:7px 8px}
+  .roster-item .nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .roster-item .ch{flex:0 0 auto}
+  .roster-item .avatar{width:26px;height:26px;flex:0 0 26px;font-size:11px}
+}
+
+@media (max-width:860px) and (orientation:landscape){
+  .roster{grid-template-columns:1fr 1fr}
+  .lobby-box{max-height:none}
+}
