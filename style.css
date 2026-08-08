@@ -99,6 +99,13 @@ body::before{
 }
 .field input:focus,.field select:focus{outline:none;border-color:var(--gold)}
 .field select option{background:#0a1024}
+.stylepick{display:flex;gap:6px}
+.style-btn{
+  background:rgba(6,10,22,.85);border:1px solid rgba(140,160,210,.3);
+  color:var(--dim);padding:9px 10px;font-family:'Rajdhani',sans-serif;font-size:14px;font-weight:600;cursor:pointer;
+}
+.style-btn.on{color:var(--red);border-color:var(--red);background:rgba(224,64,87,.15);box-shadow:0 0 10px rgba(224,64,87,.3)}
+.style-btn.on::selection{background:transparent}
 
 .btn-primary{
   background:linear-gradient(180deg,#ffe9b0,#c8a355);

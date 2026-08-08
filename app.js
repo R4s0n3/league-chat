@@ -51,6 +51,13 @@ const FALLBACK = [
   "jg??",
   "unlucky",
   "no way",
+  "you're actually trolling",
+  "what was that",
+  "are you serious right now",
+  "mb.i guess??",
+  "reporting",
+  "absolutely classic",
+  "it's actually impressive",
 ];
 
 /* ============ STATE ============ */
@@ -60,10 +67,11 @@ const S = {
   channel: "team",
   killsB: 0, killsR: 0, deaths: 0,
   sec: 0, tox: 0.5,
+  spicy: localStorage.getItem("lc.spicy") !== "0",
   ambient: null, timers: [],
 };
 
-const AI = { online: false, model: "", history: [], fails: 0, queue: Promise.resolve() };
+const AI = { online: false, model: "", history: [], fails: 0, queue: Promise.resolve(), lastBot: "" };
 
 const $ = id => document.getElementById(id);
 const pick = a => a[Math.floor(Math.random() * a.length)];
@@ -89,15 +97,33 @@ function logLine(text, cls = "", all = false) {
   log.scrollTop = log.scrollHeight;
 }
 
-function sys(text) { logLine(`<span class="body">${text}</span>`, "sys"); }
+function sys(text) {
+  logLine(`<span class="body">${text}</span>`, "sys");
+  historyNote(text.replace(/<[^>]*>/g, ""));
+}
 
 function post(author, color, text, cls = "", all = false, isSelf = false) {
   const who = author ? `<span class="who" style="color:${color}">${author}</span><span class="dots">:</span>` : "";
   logLine(`${who}<span class="body">${text}</span>`, cls + (isSelf ? " self" : ""), all);
+  if (author) remember(author, text);
+}
+
+/* ---- chat memory: every line (pings, kills, chat) goes to the transcript ---- */
+function remember(speaker, content) {
+  const c = String(content || "").trim();
+  if (c) AI.history.push(speaker + ": " + c.slice(0, 240));
+}
+function historyNote(text) {
+  const c = String(text || "").trim();
+  if (c) AI.history.push(">> " + c.slice(0, 160));
 }
 
 function randomBot(all = false) {
   const src = all ? (Math.random() < 0.5 ? TEAMMATES : ENEMIES) : TEAMMATES;
+  if (AI.lastBot && src.length > 1) {
+    const others = src.filter((b) => b.name !== AI.lastBot);
+    if (others.length) return others[Math.floor(Math.random() * others.length)];
+  }
   return src[Math.floor(Math.random() * src.length)];
 }
 
@@ -114,6 +140,7 @@ function doPing(who, type) {
   mark.innerHTML = `<span class="t">${tNow()}</span><span class="picon" style="color:${t.color}">${t.icon}</span><span class="body">${t.label}</span>`;
   $("log").appendChild(mark);
   $("log").scrollTop = $("log").scrollHeight;
+  if (who) remember(who.name, t.icon + " " + t.label);
 
   // Minimap-Marker
   const mm = $("minimap");
@@ -157,7 +184,13 @@ async function genLine(scene, from, intent) {
   const res = await fetch("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ player: S.playerName, scene, intent, from, maxWords: 8, history: AI.history }),
+    body: JSON.stringify({
+      player: S.playerName,
+      scene, intent, from,
+      maxWords: S.spicy ? 12 : 8,
+      spicy: S.spicy,
+      history: AI.history,
+    }),
   });
   if (!res.ok) throw new Error("HTTP " + res.status);
   const j = await res.json();
@@ -191,9 +224,11 @@ function speak(scene, opts = {}) {
     if (opts.silent && Math.random() < opts.silent) return res();
 
     AI.queue = AI.queue.then(async () => {
+      AI.lastBot = who.name;
       if (!AI.online) {
         const w = who;
-        post(w.name, w.color, withP(pick(FALLBACK)), "flame", !!opts.all);
+        const fb = pick(FALLBACK);
+        post(w.name, w.color, withP(fb), "flame", !!opts.all);
         return res();
       }
       try {
@@ -215,24 +250,35 @@ function speak(scene, opts = {}) {
 }
 
 function userTalk(msg) {
-  AI.history.push({ role: "user", content: msg });
-  if (AI.history.length > 24) AI.history = AI.history.slice(-24);
+  if (AI.history.length > 40) AI.history = AI.history.slice(-40);
   post(S.playerName, "#d8b45e", msg, "self", S.channel === "all", true);
-  speak("react", { all: S.channel === "all", intent: classify(msg), ping: 0.3, silent: 0.15, tox: 0.4 });
+  speak("react", { all: S.channel === "all", intent: classify(msg), ping: 0.18, silent: 0.05, tox: 0.4 })
+    .then(() => {
+      const i = classify(msg);
+      if (Math.random() < 0.7) {
+        speak(i ? "react" : "ambient", { all: S.channel === "all", intent: i, ping: 0.2, silent: 0.15, tox: 0.25 });
+      }
+      if (Math.random() < 0.25) {
+        later(() => speak("allflame", { all: true, who: pick(ENEMIES), ping: 0.25, silent: 0.2, tox: 0.1 }), 3000 + Math.random() * 2000);
+      }
+    });
 }
 
 /* ==================== AMBIENT (rare & short) ==================== */
 function scheduleAmbient() {
   clearTimeout(S.ambient);
-  S.ambient = setTimeout(ambientLoop, 30000 + Math.random() * 22000);
+  S.ambient = setTimeout(ambientLoop, 20000 + Math.random() * 20000);
 }
 function ambientLoop() {
-  speak("ambient", { all: S.channel === "all", ping: 0.55, silent: 0.2, tox: 0.1 });
+  speak("ambient", { all: S.channel === "all", ping: 0.45, silent: 0.15, tox: 0.1 });
+  if (Math.random() < 0.45) {
+    later(() => speak("ambient", { all: S.channel === "all", ping: 0.3, silent: 0.15, tox: 0.1 }), 2500 + Math.random() * 2500);
+  }
   scheduleAmbient();
 }
 
 /* ==================== EVENTS ==================== */
-function scheduleEvent() { later(gameEvent, 40000 + Math.random() * 25000); }
+function scheduleEvent() { later(gameEvent, 25000 + Math.random() * 20000); }
 
 function gameEvent() {
   if (Math.random() < 0.55) {
@@ -241,14 +287,20 @@ function gameEvent() {
     const killer = pick(ENEMIES);
     banner(`${killer.name} has slain you.`);
     sys(`<b>${S.playerName}</b> slain by <b>${killer.name}</b>.`);
-    speak("death", { who: randomBot(), ping: 0.4, silent: 0.25, tox: 0.4 });
-    if (Math.random() < 0.3) speak("allflame", { all: true, who: pick(ENEMIES), ping: 0.3, silent: 0.3, tox: 0.1 });
+    speak("death", { who: randomBot(), ping: 0.4, silent: 0.15, tox: 0.4 });
+    if (Math.random() < 0.5) {
+      speak("death", { all: Math.random() < 0.5, ping: 0.3, silent: 0.1, tox: 0.3 });
+    }
+    if (Math.random() < 0.35) speak("allflame", { all: true, who: pick(ENEMIES), ping: 0.3, silent: 0.2, tox: 0.1 });
   } else {
     S.killsB++;
     const e = pick(ENEMIES);
     banner(`You defeated ${e.name}`, "blue");
     post(S.playerName, "#d8b45e", `${e.name} down`, "", false, true);
-    speak("kill", { who: randomBot(S.channel === "all"), ping: 0.4, silent: 0.3 });
+    speak("kill", { who: randomBot(S.channel === "all"), ping: 0.4, silent: 0.1 });
+    if (Math.random() < 0.45) {
+      speak("kill", { all: Math.random() < 0.4, ping: 0.35, silent: 0.15 });
+    }
   }
   updateScore();
   scheduleEvent();
@@ -314,6 +366,13 @@ function updateChannelUI() {
 }
 
 /* ==================== LOBBY ==================== */
+function setSpicy(v) {
+  S.spicy = !!v;
+  try { localStorage.setItem("lc.spicy", v ? "1" : "0"); } catch (e) {}
+  const cas = $("styleCasual"), sp = $("styleSpicy");
+  if (cas) cas.classList.toggle("on", !S.spicy);
+  if (sp) sp.classList.toggle("on", S.spicy);
+}
 function fillChampSelect() {
   const sel = $("champSelect");
   sel.innerHTML = "";
@@ -399,6 +458,10 @@ document.addEventListener("DOMContentLoaded", () => {
   $("btnShuffle").addEventListener("click", shuffleTeam);
   $("btnStart").addEventListener("click", startGame);
   $("btnLeave").addEventListener("click", leaveGame);
+
+  setSpicy(S.spicy);
+  $("styleCasual").addEventListener("click", () => setSpicy(false));
+  $("styleSpicy").addEventListener("click", () => setSpicy(true));
 
   $("msgInput").addEventListener("keydown", (e) => {
     if (e.key === "Enter") sendMessage();

@@ -63,20 +63,24 @@ function personaFor(from) {
   return (from && PERSONAS[from]) || "You are an ordinary ranked player with a dry, mildly sarcastic voice.";
 }
 
-function buildSystem(player, from, maxWords) {
+function buildSystem(player, from, maxWords, spicy) {
   const persona = personaFor(from);
   const cap = Math.max(1, Math.min(20, maxWords || 8));
+  const mode = spicy
+    ? "SPICY/EXPLICIT MODE: roast harder, be more provocative and personal (about gameplay, the player doing, their champion, their build). Go for the burn. Stop holding back."
+    : "Keep it casual-snarky, don't go full flame.";
   return {
     role: "system",
     content:
       persona + " You are an ordinary ranked League of Legends player right now, mildly annoyed at '" + player + "', the inting teammate, and the soloq circus. " +
       "RULES: " +
       "1) Reply with a MAXIMUM of " + cap + " words - usually far fewer. Often a single snarky sentence; sometimes just '?', 'gg', 'lol', 'nt', 'jg????', 'unlucky' or a dry joke. No essays. " +
-      "2) VARY your voice every message; NEVER repeat a phrase or word-pair someone already wrote in this chat. " +
-      "3) Always lowercase English, even if '" + player + "' writes in German or any other language - your line stays English. " +
+      "2) Read the FULL chat log below (every ping, death, and message). NEVER repeat a phrase or the exact same wording someone already wrote. Whatever you write must bring something the chat hasn't already said. " +
+      "3) Always lowercase English, even if someone else writes in German or any other language - your line stays English. " +
       "4) Flame targets the game only: kills, deaths, cs, lane, champion, build, picks. Short mom-flames and one-liners about gameplay are ok. " +
-      "LIMITS: no group slurs, no real threats or violence, nothing about '" + player + "'s real life or real family. " +
-      "Reply ONLY with the message text, no quotes, no meta-notes. Others: " + ROSTER.concat(["DariusBurgus", "PrivacyNanna", "LZ_Support", "Terbar", "DueToZed"]).join(", ") + ".",
+      "5) " + mode + " " +
+      "LIMITS: no group slurs, no real threats or violence, nothing about anyone's real life or real family. " +
+      "Reply ONLY with the message text, no quotes, no meta-notes, no nicknames in front of it. Others: " + ROSTER.concat(["DariusBurgus", "PrivacyNanna", "LZ_Support", "Terbar", "DueToZed"]).join(", ") + ".",
   };
 }
 
@@ -145,17 +149,17 @@ function serveStatic(res, filePath) {
 }
 
 /* ---------------- API /api/chat ---------------- */
-async function generate(messages) {
+async function generate(messages, spicy) {
   let lastErr = null;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       return await client.chat.completions.create({
         model: MODEL,
         messages: messages,
-        temperature: 0.95,
+        temperature: spicy ? 1.35 : 0.95, // spicy mode = chaos, more provocation
         max_tokens: 300, // replies are kept short by the prompt; cap as a hard limit
-        frequency_penalty: 1.1,
-        presence_penalty: 0.6,
+        frequency_penalty: spicy ? 1.35 : 1.1,
+        presence_penalty: spicy ? 0.9 : 0.6,
       });
     } catch (e) {
       lastErr = e;
@@ -179,25 +183,33 @@ async function handleChat(req, res) {
     return json(res, 400, { error: "invalid body" });
   }
 
-  const history = Array.isArray(body.history) ? body.history.slice(-24) : [];
+  const history = Array.isArray(body.history) ? body.history.slice(-40) : [];
   const player = typeof body.player === "string" && body.player ? body.player : "the inting teammate";
   const scene = typeof body.scene === "string" ? body.scene : "chat";
   const intent = typeof body.intent === "string" ? body.intent : "";
   const from = typeof body.from === "string" ? body.from : "";
   const maxWords = Number.isFinite(body.maxWords) ? body.maxWords : 8;
+  const spicy = !!body.spicy;
+
+  const transcript = history
+    .map((h) => {
+      if (typeof h === "string") return String(h).slice(0, 300);
+      const speaker = h && h.speaker ? String(h.speaker) : "";
+      const content = h && h.content != null ? String(h.content) : "";
+      return (speaker ? speaker + ": " : "") + content;
+    })
+    .filter(Boolean)
+    .slice(-40)
+    .join("\n");
+  const sceneBlock = "@@@[scene] " + sceneFor(scene, player, intent);
 
   const messages = [
-    buildSystem(player, from, maxWords),
-    { role: "user", content: "@@@" + sceneFor(scene, player, intent) },
-  ].concat(
-    history.map((m) => ({
-      role: m.role === "user" ? "user" : "assistant",
-      content: String(m.content).slice(0, 500),
-    }))
-  );
+    buildSystem(player, from, maxWords, spicy),
+    { role: "user", content: sceneBlock + "\n\nFULL CHAT LOG SO FAR:\n" + (transcript || "(nothing has been said yet)") },
+  ];
 
   try {
-    const completion = await generate(messages);
+    const completion = await generate(messages, spicy);
     const m = completion.choices && completion.choices[0] && completion.choices[0].message;
     const reply = (m && m.content) || "";
     const note = " (finish: " + ((completion.choices && completion.choices[0] && completion.choices[0].finish_reason) || "?") + ")";
