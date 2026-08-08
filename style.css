@@ -288,6 +288,32 @@ body::before{
 @keyframes mppPop{from{transform:scale(.3);opacity:0}to{transform:scale(1);opacity:1}}
 @keyframes mppRing{from{transform:scale(.4);opacity:.9}to{transform:scale(1.6);opacity:0}}
 
+/* ---------- rift minimap simulation ---------- */
+.mm-map{position:absolute;inset:0;width:100%;height:100%}
+.mm-units{position:absolute;inset:0;pointer-events:none;z-index:2}
+.mm-live{font-size:9px;letter-spacing:1px;color:#59d0a0;border:1px solid rgba(89,208,160,.4);padding:1px 5px;float:right}
+.mm-live.off{color:var(--dim);border-color:rgba(140,160,190,.3)}
+.mmu{
+  position:absolute;width:9px;height:9px;margin:-5px 0 0 -5px;
+  border-radius:50%;
+  background:radial-gradient(circle at 35% 30%, #79e0ff, #1f9fd8);
+  border:1px solid #bff0ff;
+  box-shadow:0 0 6px rgba(60,200,255,.8), 0 0 0 1px rgba(0,0,0,.55);
+  transition:left .16s linear, top .16s linear, opacity .5s;
+  z-index:2;
+}
+.mmu.red{background:radial-gradient(circle at 35% 30%, #ff9aa6, #e03857);border-color:#ffc2cb;box-shadow:0 0 6px rgba(255,90,110,.8),0 0 0 1px rgba(0,0,0,.55)}
+.mmu.me{width:13px;height:13px;margin:-7px 0 0 -7px;box-shadow:0 0 6px #ffd566, 0 0 0 1px #000, 0 0 0 2px rgba(255,213,102,.5);z-index:3}
+.mmu.jgl{width:8px;height:8px;margin:-4px 0 0 -4px}
+.mmu.fight{animation:mmfight .22s ease-in-out infinite alternate}
+.mmu.dead{opacity:0}
+@keyframes mmfight{from{transform:scale(1)}to{transform:scale(1.4)}}
+.mm-spark{
+  position:absolute;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;
+  pointer-events:none;z-index:4;animation:mmSp .5s ease-out forwards;
+}
+@keyframes mmSp{from{transform:scale(.4);opacity:1}to{transform:scale(1.9);opacity:0}}
+
 /* ping chat lines */
 .msg.ping{color:#9fb0d4;font-size:14.5px}
 .msg.ping .t{color:#58627a}

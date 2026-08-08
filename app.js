@@ -173,6 +173,335 @@ function doPing(who, type) {
   }
 }
 
+/* ==================== RIFT MINIMAP SIM ==================== */
+/* A tiny live RTS running under the chat: 10 champions (5v5) actually
+   walk the lanes, the junglers clear camps and gank, and skirmishes
+   break out — kills show up in the scoreboard, banners and death log.
+   Blue = player side (bottom-left), Red = top-right (real minimap). */
+
+const MM = {
+  geo: {
+    W: 200, H: 150,
+    lanes: {
+      top: [[0.14, 0.86], [0.22, 0.46], [0.34, 0.24], [0.52, 0.12], [0.72, 0.16], [0.88, 0.30]],
+      mid: [[0.24, 0.92], [0.38, 0.70], [0.50, 0.50], [0.62, 0.30], [0.76, 0.08]],
+      bot: [[0.12, 0.92], [0.30, 0.88], [0.52, 0.84], [0.74, 0.80], [0.90, 0.66]],
+    },
+    turret: { home: 0.16, enemy: 0.84 },
+    campsB: [[0.06, 0.78], [0.16, 0.60], [0.06, 0.48], [0.16, 0.28], [0.30, 0.54]],
+    campsR: [[0.94, 0.22], [0.84, 0.40], [0.94, 0.52], [0.84, 0.72], [0.70, 0.46]],
+    baseB: { x: 0.10, y: 0.90 },
+    baseR: { x: 0.90, y: 0.10 },
+  },
+  _poly: {}, pairs: [],
+  units: null, elUnits: null,
+  raf: 0, last: 0, running: false,
+};
+
+const MM_SPD = { top: 0.058, mid: 0.078, bot: 0.055, sup: 0.048, jgl: 0.088 };
+
+function mmPoly(name) {
+  if (MM._poly[name]) return MM._poly[name];
+  const pts = MM.geo.lanes[name], cuts = [];
+  let tot = 0;
+  for (let i = 1; i < pts.length; i++) {
+    tot += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+    cuts.push(tot);
+  }
+  const c = { cuts, total: tot };
+  MM._poly[name] = c;
+  return c;
+}
+function samplePt(laneName, t) {
+  const pts = MM.geo.lanes[laneName];
+  if (t <= 0) return { x: pts[0][0], y: pts[0][1] };
+  if (t >= 1) return { x: pts[pts.length - 1][0], y: pts[pts.length - 1][1] };
+  const c = mmPoly(laneName);
+  const d = t * c.total;
+  let i = 0;
+  while (i < c.cuts.length && c.cuts[i] < d) i++;
+  const s = i ? c.cuts[i - 1] : 0;
+  const seg = (c.cuts[i] || c.total) - s;
+  const f = seg ? (d - s) / seg : 0;
+  const a = pts[i], b = pts[i + 1] || pts[pts.length - 1];
+  return { x: a[0] + (b[0] - a[0]) * f, y: a[1] + (b[1] - a[1]) * f };
+}
+function turretPt(laneName, team) {
+  return samplePt(laneName, team === "blue" ? MM.geo.turret.home : MM.geo.turret.enemy);
+}
+function mmRand(a, b) { return a + Math.random() * (b - a); }
+
+function createUnit(t) {
+  const el = document.createElement("div");
+  el.className = "mmu " + t.team + (t.me ? " me" : "") + (t.role === "jgl" ? " jgl" : "");
+  MM.elUnits.appendChild(el);
+  const lane = t.role === "jgl" ? null : (t.role === "bot" || t.role === "sup") ? "bot" : t.role;
+  const u = {
+    team: t.team, role: t.role, lane,
+    w: t.w, me: !!t.me,
+    x: (t.team === "blue" ? MM.geo.baseB : MM.geo.baseR).x,
+    y: (t.team === "blue" ? MM.geo.baseB : MM.geo.baseR).y,
+    hp: 1, dead: false,
+    born: 1, bornT: 0, bornDur: mmRand(2.2, 3.6),
+    pause: 0, cool: 0, count: 0,
+    el,
+  };
+  if (lane) {
+    u.lane = lane;
+    u.p = t.team === "blue" ? MM.geo.turret.home : MM.geo.turret.enemy;
+    u.spd = MM_SPD[u.role];
+  } else {
+    u.camps = t.team === "blue" ? MM.geo.campsB.slice() : MM.geo.campsR.slice();
+    u.ci = 0;
+    u.spd = MM_SPD.jgl;
+  }
+  return u;
+}
+
+function mmSpark(x, y, c, cls) {
+  const e = document.createElement("div");
+  e.className = "mm-spark" + (cls ? " " + cls : "");
+  e.style.left = (x * 100) + "%";
+  e.style.top = (y * 100) + "%";
+  e.style.background = c;
+  MM.elUnits.appendChild(e);
+  setTimeout(() => e.remove(), 520);
+}
+
+function mmBasePos(u) {
+  return u.team === "blue" ? MM.geo.baseB : MM.geo.baseR;
+}
+
+function stepUnitSim(u, dt) {
+  if (u.born) {
+    u.bornT += dt;
+    const f = Math.min(1, u.bornT / u.bornDur);
+    const e = f * f * (3 - 2 * f);
+    const from = mmBasePos(u);
+    const home = u.lane ? turretPt(u.lane, u.team) : { x: u.camps[0][0], y: u.camps[0][1] };
+    u.x = from.x + (home.x - from.x) * e;
+    u.y = from.y + (home.y - from.y) * e;
+    if (f >= 1) u.born = 0;
+    return;
+  }
+  if (u.dead) {
+    u.rev -= dt;
+    if (u.rev <= 0) mmRespawn(u);
+    return;
+  }
+  if (u.cool > 0) u.cool -= dt;
+  if (u.pause > 0) { u.pause -= dt; return; }
+
+  if (u.lane) {
+    const d = u.team === "blue" ? 1 : -1;
+    u.p += d * u.spd * dt;
+    const lo = 0.10, hi = 0.90;
+    if (u.p >= hi) { u.p = hi; u.pause = mmRand(0.3, 2.2); }
+    if (u.p <= lo) { u.p = lo; u.pause = mmRand(0.3, 2.4); }
+    const pos = samplePt(u.lane, u.p);
+    u.x = pos.x;
+    u.y = pos.y + (u.role === "sup" ? 0.018 : u.role === "bot" ? -0.02 : 0);
+  } else {
+    /* jungler: farm camps, occasionally gank a pushing enemy laner */
+    if (u.gank) {
+      const t = u.gank;
+      const dx = t.x - u.x, dy = t.y - u.y;
+      const d = Math.hypot(dx, dy);
+      if (d < 0.012) { u.cool = Math.max(u.cool, 0.5); u.gank = null; }
+      else { u.x += (dx / d) * u.spd * 1.25 * dt; u.y += (dy / d) * u.spd * 1.25 * dt; }
+      return;
+    }
+    const c = u.camps[u.ci];
+    const dx = c[0] - u.x, dy = c[1] - u.y;
+    const d = Math.hypot(dx, dy);
+    if (d < 0.012) {
+      u.pause = mmRand(1.2, 3.6);
+      mmSpark(u.x, u.y, u.team === "blue" ? "#59d0a0" : "#e8a04a", "");
+      u.ci = ++u.ci % u.camps.length;
+      u.count++;
+      if (u.count % 3 === 0 && Math.random() < 0.65) {
+        const cand = MM.units.filter(o =>
+          o.team !== u.team && !o.dead && o.lane && (o.team === "blue" ? o.p > 0.5 : o.p < 0.5));
+        if (cand.length) {
+          const g = pick(cand);
+          u.gank = { x: g.x, y: g.y };
+        }
+      }
+      return;
+    }
+    u.x += (dx / d) * u.spd * dt;
+    u.y += (dy / d) * u.spd * dt;
+  }
+}
+
+function mmRespawn(u) {
+  u.dead = false;
+  u.hp = 1;
+  u.cool = 0;
+  u.pause = 0;
+  u.gank = null;
+  if (u.lane) u.p = u.team === "blue" ? MM.geo.turret.home : MM.geo.turret.enemy;
+  u.born = 1; u.bornT = 0; u.bornDur = mmRand(1.5, 2.5);
+  u.el.classList.remove("dead");
+}
+
+function mmPlayerSlain(killer) {
+  S.deaths++;
+  setTox(S.tox + 0.7);
+  banner(killer.name + " has slain you.");
+  sys(`<b>${S.playerName}</b> slain by <b>${killer.name}</b>.`);
+  speak("death", { who: randomBot(), ping: 0.5, silent: 0.2 });
+}
+
+function mmKill(winner, victim) {
+  victim.dead = true;
+  victim.rev = mmRand(4, 9);
+  victim.hp = 0;
+  victim.el.classList.add("dead");
+  mmSpark(victim.x, victim.y, victim.team === "blue" ? "#ff6172" : "#3fd0ff", "kill");
+  if (victim.team === "red") {
+    S.killsB++;
+    banner((winner.me ? S.playerName : winner.name) + " defeated " + victim.name, "blue");
+    sys(`<b>${winner.me ? S.playerName : winner.name}</b> killed <b>${victim.name}</b> (${victim.w.champ}).`);
+  } else {
+    S.killsR++;
+    if (victim.me) {
+      mmPlayerSlain(winner);
+    } else {
+      banner(victim.name + " has been killed");
+      sys(`<b>${victim.name}</b> was slain by <b>${winner.name}</b>.`);
+    }
+  }
+  updateScore();
+}
+
+function resolvePair(p) {
+  const A = p.A, B = p.B;
+  A.el.classList.remove("fight");
+  B.el.classList.remove("fight");
+  A.cool = B.cool = mmRand(1, 2.5);
+  if (Math.random() < 0.42) {
+    const wA = A.hp / (A.hp + B.hp);
+    const winner = Math.random() < wA ? A : B;
+    const victim = winner === A ? B : A;
+    mmKill(winner, victim);
+  } else {
+    mmSpark((A.x + B.x) / 2, (A.y + B.y) / 2, "#ffe066", "miss");
+  }
+}
+
+function tickFightsSim(dt) {
+  for (const p of MM.pairs.slice()) {
+    p.t += dt;
+    p.A.x += (Math.random() - 0.5) * 0.018;
+    p.A.y += (Math.random() - 0.5) * 0.018;
+    p.B.x += (Math.random() - 0.5) * 0.018;
+    p.B.y += (Math.random() - 0.5) * 0.018;
+    if (Math.random() < 0.3) {
+      mmSpark(mmRand(p.A.x, p.B.x), mmRand(p.A.y, p.B.y),
+        Math.random() < 0.5 ? "#ffd566" : "#9be06b", "hit");
+    }
+    const ix = MM.pairs.indexOf(p);
+    if (p.t >= p.dur) { MM.pairs.splice(ix, 1); resolvePair(p); }
+  }
+  for (let i = 0; i < MM.units.length; i++) {
+    const A = MM.units[i];
+    if (A.dead || A.cool > 0 || A.born) continue;
+    for (let j = i + 1; j < MM.units.length; j++) {
+      const B = MM.units[j];
+      if (B.dead || B.cool > 0 || B.born || B.team === A.team) continue;
+      const d = Math.hypot(A.x - B.x, A.y - B.y);
+      const max = (A.lane && B.lane && A.lane === B.lane) ? 0.13 : 0.10;
+      if (d > max) continue;
+      MM.pairs.push({ A, B, t: 0, dur: mmRand(0.6, 1.3) });
+      A.cool = B.cool = 0.3;
+      A.el.classList.add("fight");
+      B.el.classList.add("fight");
+    }
+  }
+}
+
+function frameMmSim(now) {
+  if (!MM.running) return;
+  const dt = Math.min(0.25, (now - MM.last) / 1000 || 0.016);
+  MM.last = now;
+  tickFightsSim(dt);
+  for (const u of MM.units) stepUnitSim(u, dt);
+  for (const u of MM.units) {
+    u.el.style.left = (u.x * 100) + "%";
+    u.el.style.top = (u.y * 100) + "%";
+  }
+  if (MM.running) MM.raf = requestAnimationFrame(frameMmSim);
+}
+
+function startSim() {
+  stopSim();
+  if (!MM.elUnits) MM.elUnits = $("mmUnits");
+  MM.elUnits.innerHTML = "";
+  MM.units = [];
+  const blue = [{ w: { name: S.playerName, champ: S.myCh.emoji + " " + S.myCh.name }, role: "mid", me: true }];
+  ["top", "jgl", "bot", "sup"].forEach((r, i) =>
+    blue.push({ w: { name: TEAMMATES[i].name, champ: TEAMMATES[i].champ }, role: r }));
+  const red = [
+    { w: { name: ENEMIES[0].name, champ: ENEMIES[0].champ }, role: "top" },
+    { w: { name: ENEMIES[1].name, champ: ENEMIES[1].champ }, role: "jgl" },
+    { w: { name: ENEMIES[2].name, champ: ENEMIES[2].champ }, role: "mid" },
+    { w: { name: ENEMIES[3].name, champ: ENEMIES[3].champ }, role: "bot" },
+    { w: { name: ENEMIES[4].name, champ: ENEMIES[4].champ }, role: "sup" },
+  ];
+  blue.forEach((t) => MM.units.push(createUnit({ team: "blue", ...t })));
+  red.forEach((t) => MM.units.push(createUnit({ team: "red", ...t })));
+  MM.running = true; MM.last = 0; MM.pairs = [];
+  const st = document.querySelector(".mm-live");
+  if (st) st.classList.remove("off");
+  MM.raf = requestAnimationFrame(frameMmSim);
+}
+
+function stopSim() {
+  MM.running = false;
+  cancelAnimationFrame(MM.raf);
+  MM.pairs = [];
+  const st = document.querySelector(".mm-live");
+  if (st) st.classList.add("off");
+}
+
+function buildMinimap() {
+  const svg = $("mmMap");
+  if (!svg) return;
+  const W = MM.geo.W, H = MM.geo.H;
+  const px = (p) => (p.map((c) => [+(c[0] * W).toFixed(1), +(c[1] * H).toFixed(1)]));
+  const parts = [];
+  parts.push(`<rect width="${W}" height="${H}" fill="#0b1426"/>`);
+  parts.push(`<ellipse cx="${W * 0.18}" cy="${H * 0.70}" rx="${W * 0.18}" ry="${H * 0.13}" fill="rgba(34,86,64,.22)"/>`);
+  parts.push(`<ellipse cx="${W * 0.82}" cy="${H * 0.30}" rx="${W * 0.18}" ry="${H * 0.13}" fill="rgba(34,86,64,.22)"/>`);
+  parts.push(`<path d="M 0 ${H * 0.4} Q ${W * 0.3} ${H * 0.62} ${W * 0.5} ${H * 0.5} T ${W} ${H * 0.62}" fill="none" stroke="rgba(90,140,170,.16)" stroke-width="3"/>`);
+
+  for (const name in MM.geo.lanes) {
+    const p = px(MM.geo.lanes[name]);
+    const d = p.map((pt, i) => (i ? "L" : "M") + pt[0] + " " + pt[1]).join(" ");
+    parts.push(`<path d="${d}" fill="none" stroke="rgba(150,170,110,.34)" stroke-width="2.2" stroke-linecap="round"/>`);
+    parts.push(`<path d="${d}" fill="none" stroke="rgba(230,235,180,.12)" stroke-width="1.2" stroke-linecap="round" stroke-dasharray="3 4"/>`);
+  }
+  const tower = (x, y, c) => parts.push(
+    `<g transform="translate(${x} ${y})"><rect x="-2.6" y="-2.6" width="5.2" height="5.2" rx=".6" transform="rotate(45)" fill="#0b1322" stroke="${c}" stroke-width="1.1"/></g>`);
+  ["top", "mid", "bot"].forEach((l) => {
+    const h = px([samplePt(l, MM.geo.turret.home)]);
+    const e = px([samplePt(l, MM.geo.turret.enemy)]);
+    tower(+(h[0][0].toFixed(1)), +(h[0][1].toFixed(1)), "#7fd0ff");
+    tower(+(e[0][0].toFixed(1)), +(e[0][1].toFixed(1)), "#ff9aa6");
+  });
+  MM.geo.campsB.forEach((c) => parts.push(`<circle cx="${c[0] * W}" cy="${c[1] * H}" r="2" fill="rgba(0,0,0,.3)" stroke="rgba(89,208,160,.55)" stroke-width="1"/>`));
+  MM.geo.campsR.forEach((c) => parts.push(`<circle cx="${c[0] * W}" cy="${c[1] * H}" r="2" fill="rgba(0,0,0,.3)" stroke="rgba(232,160,74,.55)" stroke-width="1"/>`));
+  const base = (x, y, c) => {
+    parts.push(`<g transform="translate(${x} ${y})">
+      <rect x="-5" y="-5" width="10" height="10" rx="1" transform="rotate(45)" fill="#0b1322" stroke="${c}" stroke-width="1.5"/>
+      <rect x="-2" y="-2" width="4" height="4" rx=".5" transform="rotate(45)" fill="${c}" opacity=".85"/></g>`);
+  };
+  base(MM.geo.baseB.x * W, MM.geo.baseB.y * H, "rgba(89,208,255,.9)");
+  base(MM.geo.baseR.x * W, MM.geo.baseR.y * H, "rgba(255,120,140,.9)");
+  svg.innerHTML = parts.join("");
+}
+
 /* ==================== TOXICITY METER (mood-driven gauge) ==================== */
 /* A bidirectional gauge: left = chill, center = neutral, right = full flame.
    The bar moves based on how the chat actually feels. */
@@ -517,6 +846,7 @@ function startGame() {
   startClock();
   fillSidebar();
   updateChannelUI();
+  startSim();
 
   sys(`Welcome to the rift, <b>${S.playerName}</b>.`);
   later(() => {
@@ -531,6 +861,7 @@ function startGame() {
 
 function leaveGame() {
   clearTimers();
+  stopSim();
   $("screen-game").classList.remove("active");
   $("screen-ff").classList.remove("active");
   $("screen-lobby").classList.add("active");
@@ -543,6 +874,7 @@ function gameOver() {
   if (S.gameover) return;
   S.gameover = true;
   clearTimers();
+  stopSim();
   $("ffClock").textContent = tNow();
   $("ffKills").textContent = S.killsB;
   $("ffDeaths").textContent = S.deaths;
@@ -559,6 +891,7 @@ document.addEventListener("DOMContentLoaded", () => {
   S.myCh = CHAMPIONS[parseInt($("champSelect").value, 10) || 0];
   fillChampSelect();
   renderRoster();
+  buildMinimap();
   pingAI();
 
   $("btnShuffle").addEventListener("click", shuffleTeam);
