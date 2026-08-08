@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>League Chat Simulator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Roboto+Condensed:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="banner" class="banner"></div>
+
+<!-- ============ CHAMPION SELECT / LOBBY ============ -->
+<section id="screen-lobby" class="screen active">
+  <div class="lobby-box">
+    <div class="lobby-header">
+      <div class="logo">L</div>
+      <h1>LEAGUE <span>of</span> CHATROAST</h1>
+      <div class="btn-ghost" id="btnShuffle">⟳ reshuffle</div>
+    </div>
+
+    <div class="roster">
+      <div class="roster-col blue">
+        <div class="col-title">TEAM BLUE (5)</div>
+        <div class="roster-list" id="rosterBlue"></div>
+      </div>
+      <div class="roster-col red">
+        <div class="col-title">TEAM RED (5)</div>
+        <div class="roster-list" id="rosterRed"></div>
+      </div>
+    </div>
+
+    <div class="lobby-controls">
+      <label class="field">
+        <span>SUMMONER NAME</span>
+        <input id="nameInput" type="text" maxlength="14" value="x014Silber" spellcheck="false">
+      </label>
+      <label class="field">
+        <span>YOUR CHAMPION</span>
+        <select id="champSelect"></select>
+      </label>
+      <button class="btn-primary" id="btnStart">INTO CHAT →</button>
+    </div>
+
+    <div class="lobby-note">
+      Tip: This chat is a simulator for silly gaming trash talk – don’t take it seriously.
+      All messages are harmless, absurd player banter.
+    </div>
+    <div id="aiStatus" class="ai-status">Checking bot engine…</div>
+  </div>
+</section>
+
+<!-- ============ INGAME ============ -->
+<section id="screen-game" class="screen">
+  <div class="topbar">
+    <div class="tb-left">
+      <span id="clock" class="clock">00:00</span>
+      <span class="kda"><b id="killsBlue">0</b> : <b class="red" id="killsRed">0</b></span>
+    </div>
+    <div class="tb-center">RANKED FLEX – COOPER LEAGUE 4, 0 LP</div>
+    <div class="tb-right">
+      <button class="btn-ghost btn-sm" id="btnLeave">leave</button>
+    </div>
+  </div>
+
+  <div class="chat-layout">
+    <div class="chatpanel">
+      <div class="chat-head">
+        <div class="chat-tabs">
+          <span class="tab active" id="tabTeam">TEAM</span>
+          <span class="tab" id="tabAll">ALL</span>
+        </div>
+        <button class="btn-ghost btn-sm" id="btnReport">report chat</button>
+      </div>
+
+      <div id="log" class="log"></div>
+
+      <div id="typing" class="typing hidden"></div>
+
+      <div class="inputbar">
+        <span id="chLabel" class="ch-input">[Team]</span>
+        <input id="msgInput" type="text" placeholder="say something… (Tab = Channel)" maxlength="300" autocomplete="off" spellcheck="false">
+      </div>
+    </div>
+
+    <div class="sidebar">
+      <div class="sb-box">
+        <div class="sb-title">LOCK IN</div>
+        <div class="sb-row"><span class="me" id="sbMeName"></span><span id="sbMeChamp"></span></div>
+      </div>
+      <div class="sb-box">
+        <div class="sb-title">TEAM</div>
+        <div id="sbBlue" class="sb-teams"></div>
+      </div>
+      <div class="sb-box">
+        <div class="sb-title">ENEMIES</div>
+        <div id="sbRed" class="sb-teams"></div>
+      </div>
+      <div class="sb-box toxbox">
+        <div class="sb-title">TOXICITY</div>
+        <div class="toxbar"><div id="toxFill" class="tox-fill"></div></div>
+        <div id="toxLabel" class="tox-label">quiet sunday</div>
+      </div>
+      <div class="sb-box minimapbox">
+        <div class="sb-title">MINIMAP</div>
+        <div id="minimap" class="minimap"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script src="app.js"></script>
+</body>
+</html>
