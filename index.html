@@ -54,8 +54,8 @@
     </div>
 
     <div class="lobby-note">
-      Tip: This chat is a simulator for silly gaming trash talk – don’t take it seriously.
-      All messages are harmless, absurd player banter.
+      Goal: keep the chat civilized. The toxicity bar is the match – let it max out and
+      your team instantly surrenders. Stay chill. Don’t run it down mid.
     </div>
     <div id="aiStatus" class="ai-status">Checking bot engine…</div>
   </div>
@@ -107,15 +107,40 @@
         <div class="sb-title">ENEMIES</div>
         <div id="sbRed" class="sb-teams"></div>
       </div>
-      <div class="sb-box toxbox">
+      <div class="sb-box toxbox" id="toxBox">
         <div class="sb-title">TOXICITY</div>
-        <div class="toxbar"><div id="toxFill" class="tox-fill"></div></div>
+        <div class="toxbar">
+          <div id="toxFill" class="tox-fill"></div>
+          <div class="tox-center"></div>
+          <div id="toxMark" class="tox-mark"></div>
+        </div>
         <div id="toxLabel" class="tox-label">quiet sunday</div>
       </div>
       <div class="sb-box minimapbox">
         <div class="sb-title">MINIMAP</div>
         <div id="minimap" class="minimap"></div>
       </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FF / SURRENDER ============ -->
+<section id="screen-ff" class="screen">
+  <div class="ff-box">
+    <div class="ff-glow"></div>
+    <div class="ff-label">NEXUS EXPLODED</div>
+    <div class="ff-title">THE GAME IS FF</div>
+    <div class="ff-sub">the chat went too far.<br>your team voted 4/1 to surrender</div>
+    <div class="ff-stats">
+      <div><span>KILLS</span><b id="ffKills">0</b></div>
+      <div><span>DEATHS</span><b id="ffDeaths">0</b></div>
+      <div><span>TIME</span><b id="ffClock">00:00</b></div>
+      <div><span>TOXICITY</span><b id="ffTox">100</b></div>
+    </div>
+    <div class="ff-note">keeping the bar low was the whole game. more chill, more rift.</div>
+    <div class="ff-actions">
+      <button class="btn-primary" id="btnAgain">Rematch — be a nice person</button>
+      <button class="btn-ghost" id="btnFfLobby">back to lobby</button>
     </div>
   </div>
 </section>

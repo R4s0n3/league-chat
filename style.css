@@ -231,8 +231,23 @@ body::before{
 .sb-box{margin-bottom:12px}
 
 .toxbox{background:rgba(10,16,34,.85);border:1px solid rgba(200,160,110,.25);padding:10px}
-.toxbar{height:10px;background:#141a2c;border:1px solid #2a3550;overflow:hidden}
-.tox-fill{height:100%;width:0%;background:linear-gradient(90deg,#3cc06a,#f0c83a 55%,#f0553a);transition:width .6s}
+.toxbar{
+  position:relative;height:12px;
+  background:linear-gradient(90deg, rgba(60,192,106,.18), #141a2c 42%, #141a2c 58%, rgba(240,85,58,.18));
+  border:1px solid #2a3550;overflow:hidden;
+}
+.tox-fill{position:absolute;top:0;bottom:0;transition:left .6s, right .6s}
+.tox-fill.neg{background:linear-gradient(90deg,#3cc06a,#2a9a50)}
+.tox-fill.pos{background:linear-gradient(90deg,#d9aa2c,#f0553a)}
+.tox-center{position:absolute;top:0;bottom:0;left:50%;width:2px;margin-left:-1px;background:rgba(200,160,110,.8);z-index:2;pointer-events:none}
+.tox-mark{
+  position:absolute;top:-4px;left:50%;
+  width:12px;height:20px;z-index:3;pointer-events:none;
+  transform:translateX(-50%);transition:left .6s;
+  clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%);
+  background:linear-gradient(180deg,#ffe9b0,#c8a355);
+  box-shadow:0 0 8px rgba(200,160,110,.8);
+}
 .tox-label{font-size:11px;color:var(--dim);text-align:center;margin-top:5px}
 
 /* ---------- minimap ---------- */
@@ -294,6 +309,36 @@ body::before{
 .banner.blue{color:#bff4ff;background:linear-gradient(180deg,rgba(7,10,20,0),rgba(0,120,180,.5),rgba(7,10,20,0))}
 
 .hidden{display:none !important}
+
+/* ---------- game over / FF ---------- */
+#screen-ff{align-items:center;justify-content:center;background:radial-gradient(900px 600px at 50% 40%, rgba(90,10,30,.35), transparent 70%), var(--bg)}
+.ff-box{
+  position:relative;overflow:hidden;
+  width:min(520px, calc(100vw - 40px));
+  background:linear-gradient(180deg, rgba(16,14,26,.97), rgba(8,8,16,.97));
+  border:1px solid rgba(240,85,58,.4);
+  border-top:3px solid var(--red);
+  box-shadow:0 30px 80px rgba(0,0,0,.7), inset 0 0 80px rgba(240,85,58,.08);
+  padding:30px 34px 26px;
+  text-align:center;
+}
+.ff-glow{position:absolute;inset:-40% -30%;background:radial-gradient(300px 200px at 50% 0%, rgba(240,85,58,.35), transparent 70%);pointer-events:none;animation:ffGlow 2.2s ease-in-out infinite alternate}
+@keyframes ffGlow{from{opacity:.5}to{opacity:1}}
+.ff-label{font-size:11px;letter-spacing:5px;color:var(--red);border:1px solid rgba(224,64,87,.5);display:inline-block;padding:3px 12px;margin-bottom:14px}
+.ff-title{font-family:'Roboto Condensed',sans-serif;font-weight:700;font-size:40px;letter-spacing:6px;color:#ffd7de;text-shadow:0 0 24px rgba(240,85,58,.6)}
+.ff-sub{margin-top:8px;color:#b9c2d4;font-size:14px;line-height:1.5}
+.ff-stats{display:flex;justify-content:center;gap:14px;margin:20px 0 6px}
+.ff-stats div{flex:1;background:rgba(20,14,26,.7);border:1px solid rgba(224,64,87,.25);padding:10px 6px}
+.ff-stats span{display:block;font-size:10px;letter-spacing:2px;color:var(--dim)}
+.ff-stats b{display:block;font-size:26px;font-weight:700;color:#ff8f9e}
+.ff-note{margin-top:14px;font-size:12px;color:var(--dim);font-style:italic}
+.ff-actions{display:flex;gap:12px;margin-top:20px;justify-content:center}
+.ff-actions .btn-primary{flex:1.4}
+.ff-actions .btn-ghost{flex:1}
+
+/* toxicity danger warning */
+.toxbox.danger{animation:toxAlert .65s ease-in-out infinite alternate}
+@keyframes toxAlert{from{box-shadow:0 0 0 rgba(240,85,58,0)}to{box-shadow:0 0 16px rgba(240,85,58,.55)}}
 
 /* ---------- touch handling ---------- */
 button,input,select,.tab,.style-btn{touch-action:manipulation}

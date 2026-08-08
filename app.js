@@ -66,9 +66,9 @@ const S = {
   myCh: CHAMPIONS[0],
   channel: "team",
   killsB: 0, killsR: 0, deaths: 0,
-  sec: 0, tox: 0.5,
+  sec: 0, tox: 0.5, gameover: false,
   spicy: localStorage.getItem("lc.spicy") !== "0",
-  ambient: null, timers: [],
+  ambient: null, timers: [], tick: null,
 };
 
 const AI = { online: false, model: "", history: [], fails: 0, queue: Promise.resolve(), lastBot: "" };
@@ -101,7 +101,7 @@ function tNow() {
   return m + ":" + s;
 }
 function later(fn, ms) { const id = setTimeout(fn, ms); S.timers.push(id); return id; }
-function clearTimers() { S.timers.forEach(clearTimeout); S.timers = []; clearTimeout(S.ambient); }
+function clearTimers() { S.timers.forEach(clearTimeout); S.timers = []; clearTimeout(S.ambient); clearInterval(S.tick); }
 
 /* ==================== LOG ==================== */
 function logLine(text, cls = "", all = false) {
@@ -173,12 +173,70 @@ function doPing(who, type) {
   }
 }
 
-/* ==================== TOX (just visual) ==================== */
-const TOX_LABELS = ["fine", "spicy", "tilted", "smoldering", "full report", "*angry*"];
+/* ==================== TOXICITY METER (mood-driven gauge) ==================== */
+/* A bidirectional gauge: left = chill, center = neutral, right = full flame.
+   The bar moves based on how the chat actually feels. */
+const TOX_LABELS = [
+  [-5,    "full chill"],
+  [-3.5,  "cool as a cucumber"],
+  [-1.5,  "chill"],
+  [-0.5,  "fine"],
+  [0.5,   "spicy"],
+  [1.5,   "tilted"],
+  [3,     "smoldering"],
+  [4,     "full report"],
+  [4.8,   "*angry noises*"],
+];
+function toxLabel(v) {
+  for (let i = TOX_LABELS.length - 1; i >= 0; i--) if (v >= TOX_LABELS[i][0]) return TOX_LABELS[i][1];
+  return TOX_LABELS[0][1];
+}
 function setTox(v) {
-  S.tox = Math.min(10, Math.max(0, v));
-  $("toxFill").style.width = S.tox * 10 + "%";
-  $("toxLabel").textContent = TOX_LABELS[Math.min(TOX_LABELS.length - 1, Math.floor(S.tox / 2))];
+  if (S.gameover) return;
+  S.tox = Math.max(-5, Math.min(5, v));
+  const half = 50;
+  const fill = $("toxFill");
+  if (S.tox < 0) {
+    fill.classList.add("neg");
+    fill.classList.remove("pos");
+    fill.style.right = half + "%";
+    fill.style.left = (half - (Math.abs(S.tox) / 5) * half) + "%";
+  } else {
+    fill.classList.add("pos");
+    fill.classList.remove("neg");
+    fill.style.left = half + "%";
+    fill.style.right = (half - (S.tox / 5) * half) + "%";
+  }
+  $("toxMark").style.left = ((S.tox + 5) / 10) * 100 + "%";
+  const lab = $("toxLabel");
+  lab.textContent = toxLabel(S.tox);
+  lab.style.color = S.tox < -0.5 ? "#6bdd8b" : S.tox > 0.5 ? "#ff7a7a" : "var(--dim)";
+  $("toxBox").classList.toggle("danger", S.tox >= 3.5);
+  if (S.tox >= 5) gameOver();
+}
+
+/* Rough mood score of an actual chat line: -2.5 de-escalates, +2.5 escalates. */
+const HOT_WORDS = {
+  "noob": 1.3, "n00b": 1.3, "bronze": 1.1, "ez": 0.8, "feed": 1.3, "feeding": 1.3,
+  "inting": 1.4, "int": 0.7, "troll": 1.3, "grief": 1.2, "griefing": 1.2, "report": 1.2,
+  "ff": 0.7, "ff15": 1, "surrender": 0.7, "afk": 0.8, "mom": 1, "mudda": 1.2, "mutter": 1,
+  "mama": 0.8, "mother": 0.8, "trash": 1.2, "garbage": 1.2, "useless": 1.2, "worst": 1,
+  "jng diff": 1.4, "jungle diff": 1.4, "top gap": 1.2, "mid gap": 1.2, "diffs": 0.6,
+  "inter": 1.1, "terrible": 0.9, "dog": 0.9, "????": 0.9, "???": 0.7, "??": 0.4, "?": 0.2,
+};
+const COOL_WORDS = {
+  "gg": 1.2, "ggwp": 1.5, "wp": 1.2, "gj": 1.2, "good job": 1.2, "well played": 1.2,
+  "nice try": 0.9, "nice": 0.7, "good": 0.5, "ty": 1, "thx": 1, "danke": 1,
+  "thanks": 1.2, "thank you": 1.2, "mb": 1, "my bad": 1, "sorry": 0.8, "np": 0.8,
+  "no problem": 0.8, "pls": 0.6, "please": 0.6, "gl": 0.8, "glhf": 0.8, "gl hf": 0.9,
+  "help": 0.5, "wp bro": 1.3,
+};
+function moodDelta(text) {
+  const t = " " + String(text || "").toLowerCase().replace(/\s+/g, " ").trim() + " ";
+  let d = 0;
+  for (const w in HOT_WORDS) if (t.includes(w)) d += HOT_WORDS[w];
+  for (const w in COOL_WORDS) if (t.includes(w)) d -= COOL_WORDS[w];
+  return Math.max(-2.5, Math.min(2.5, d));
 }
 
 /* ==================== AI CORE ==================== */
@@ -213,7 +271,7 @@ async function genLine(scene, from, intent) {
   if (!res.ok) throw new Error("HTTP " + res.status);
   const j = await res.json();
   if (!j.reply) throw new Error("empty");
-  return j.reply;
+  return { text: j.reply, tox: typeof j.tox === "number" ? j.tox : null };
 }
 
 let typingTimer = null;
@@ -232,35 +290,38 @@ function typingOff() {
 function speak(scene, opts = {}) {
   opts.scene = scene;
   return new Promise((res) => {
+    if (S.gameover) return res();
     const who = opts.who || randomBot(!!opts.all);
 
     if (opts.ping && Math.random() < opts.ping) {
       doPing(who);
-      if (opts.tox) setTox(S.tox + opts.tox);
       return res();
     }
     if (opts.silent && Math.random() < opts.silent) return res();
 
     AI.queue = AI.queue.then(async () => {
+      if (S.gameover) return res();
       AI.lastBot = who.name;
       if (!AI.online) {
-        const w = who;
-        const fb = pick(FALLBACK);
-        post(w.name, w.color, withP(fb), "flame", !!opts.all);
+        const fb = withP(pick(FALLBACK));
+        post(who.name, who.color, fb, "flame", !!opts.all);
+        setTox(S.tox + moodDelta(fb));
         return res();
       }
       try {
         typingOn();
-        const text = await genLine(scene, who.name, opts.intent || "");
+        const line = await genLine(scene, who.name, opts.intent || "");
         typingOff();
         AI.fails = 0;
-        post(who.name, who.color, text, "ai", !!opts.all);
-        if (opts.tox) setTox(S.tox + opts.tox);
+        post(who.name, who.color, line.text, "ai", !!opts.all);
+        setTox(S.tox + (line.tox != null ? line.tox : moodDelta(line.text)));
       } catch (e) {
         typingOff();
         AI.fails++;
         if (AI.fails >= 6) { AI.online = false; setAIStatus("ai offline – short chats", false); }
-        post(who.name, who.color, withP(pick(FALLBACK)), "room", !!opts.all);
+        const fb = withP(pick(FALLBACK));
+        post(who.name, who.color, fb, "room", !!opts.all);
+        setTox(S.tox + moodDelta(fb));
       }
       res();
     });
@@ -270,14 +331,14 @@ function speak(scene, opts = {}) {
 function userTalk(msg) {
   if (AI.history.length > 40) AI.history = AI.history.slice(-40);
   post(S.playerName, "#d8b45e", msg, "self", S.channel === "all", true);
-  speak("react", { all: S.channel === "all", intent: classify(msg), ping: 0.18, silent: 0.05, tox: 0.4 })
+  speak("react", { all: S.channel === "all", intent: classify(msg), ping: 0.18, silent: 0.05 })
     .then(() => {
       const i = classify(msg);
       if (Math.random() < 0.7) {
-        speak(i ? "react" : "ambient", { all: S.channel === "all", intent: i, ping: 0.2, silent: 0.15, tox: 0.25 });
+        speak(i ? "react" : "ambient", { all: S.channel === "all", intent: i, ping: 0.2, silent: 0.15 });
       }
       if (Math.random() < 0.25) {
-        later(() => speak("allflame", { all: true, who: pick(ENEMIES), ping: 0.25, silent: 0.2, tox: 0.1 }), 3000 + Math.random() * 2000);
+        later(() => speak("allflame", { all: true, who: pick(ENEMIES), ping: 0.25, silent: 0.2 }), 3000 + Math.random() * 2000);
       }
     });
 }
@@ -288,9 +349,9 @@ function scheduleAmbient() {
   S.ambient = setTimeout(ambientLoop, 20000 + Math.random() * 20000);
 }
 function ambientLoop() {
-  speak("ambient", { all: S.channel === "all", ping: 0.45, silent: 0.15, tox: 0.1 });
+  speak("ambient", { all: S.channel === "all", ping: 0.45, silent: 0.15 });
   if (Math.random() < 0.45) {
-    later(() => speak("ambient", { all: S.channel === "all", ping: 0.3, silent: 0.15, tox: 0.1 }), 2500 + Math.random() * 2500);
+    later(() => speak("ambient", { all: S.channel === "all", ping: 0.3, silent: 0.15 }), 2500 + Math.random() * 2500);
   }
   scheduleAmbient();
 }
@@ -305,13 +366,14 @@ function gameEvent() {
     const killer = pick(ENEMIES);
     banner(`${killer.name} has slain you.`);
     sys(`<b>${S.playerName}</b> slain by <b>${killer.name}</b>.`);
-    speak("death", { who: randomBot(), ping: 0.4, silent: 0.15, tox: 0.4 });
+    speak("death", { who: randomBot(), ping: 0.4, silent: 0.15 });
     if (Math.random() < 0.5) {
-      speak("death", { all: Math.random() < 0.5, ping: 0.3, silent: 0.1, tox: 0.3 });
+      speak("death", { all: Math.random() < 0.5, ping: 0.3, silent: 0.1 });
     }
-    if (Math.random() < 0.35) speak("allflame", { all: true, who: pick(ENEMIES), ping: 0.3, silent: 0.2, tox: 0.1 });
+    if (Math.random() < 0.35) speak("allflame", { all: true, who: pick(ENEMIES), ping: 0.3, silent: 0.2 });
   } else {
     S.killsB++;
+    setTox(S.tox - 0.4);
     const e = pick(ENEMIES);
     banner(`You defeated ${e.name}`, "blue");
     post(S.playerName, "#d8b45e", `${e.name} down`, "", false, true);
@@ -370,7 +432,7 @@ function sendMessage() {
   input.value = "";
   if (!msg) return;
   updateChannelUI();
-  setTox(S.tox + 0.2);
+  setTox(S.tox + moodDelta(msg));
   userTalk(msg);
 }
 
@@ -433,16 +495,26 @@ function fillSidebar() {
   red.innerHTML = ENEMIES.map((w, i) => mk(w, LANES[i])).join("");
 }
 
+function startClock() {
+  clearInterval(S.tick);
+  S.tick = setInterval(() => {
+    S.sec++;
+    $("clock").textContent = tNow();
+    if (Math.abs(S.tox) > 0.05) setTox(S.tox + (0 - S.tox) * 0.03);
+  }, 1000);
+}
+
 function startGame() {
   S.playerName = $("nameInput").value.trim() || "ImCasual";
   S.myCh = CHAMPIONS[parseInt($("champSelect").value, 10) || 0];
-  S.sec = 0; S.killsB = 0; S.killsR = 0; S.deaths = 0; S.tox = 0.5;
+  S.sec = 0; S.killsB = 0; S.killsR = 0; S.deaths = 0; S.tox = 0; S.gameover = false;
   AI.history = [];
-  setTox(S.tox);
-
   $("screen-lobby").classList.remove("active");
+  $("screen-ff").classList.remove("active");
   $("screen-game").classList.add("active");
   $("log").innerHTML = "";
+  setTox(S.tox);
+  startClock();
   fillSidebar();
   updateChannelUI();
 
@@ -460,9 +532,23 @@ function startGame() {
 function leaveGame() {
   clearTimers();
   $("screen-game").classList.remove("active");
+  $("screen-ff").classList.remove("active");
   $("screen-lobby").classList.add("active");
   renderRoster();
   $("nameInput").focus();
+}
+
+/* The toxicity bar maxed out -> chat lost the match -> team FF. */
+function gameOver() {
+  if (S.gameover) return;
+  S.gameover = true;
+  clearTimers();
+  $("ffClock").textContent = tNow();
+  $("ffKills").textContent = S.killsB;
+  $("ffDeaths").textContent = S.deaths;
+  $("ffTox").textContent = Math.round(S.tox * 20);
+  $("screen-game").classList.remove("active");
+  $("screen-ff").classList.add("active");
 }
 
 /* ==================== BINDINGS ==================== */
@@ -478,6 +564,8 @@ document.addEventListener("DOMContentLoaded", () => {
   $("btnShuffle").addEventListener("click", shuffleTeam);
   $("btnStart").addEventListener("click", startGame);
   $("btnLeave").addEventListener("click", leaveGame);
+  $("btnAgain").addEventListener("click", startGame);
+  $("btnFfLobby").addEventListener("click", leaveGame);
 
   setSpicy(S.spicy);
   $("styleCasual").addEventListener("click", () => setSpicy(false));
@@ -491,8 +579,6 @@ document.addEventListener("DOMContentLoaded", () => {
   $("tabTeam").addEventListener("click", () => setChannel("team"));
 
   $("btnReport").addEventListener("click", () => {
-    speak("report", { who: randomBot(), silent: 0.35, ping: 0.15, tox: 0.5 });
+    speak("report", { who: randomBot(), silent: 0.35, ping: 0.15 });
   });
-
-  setInterval(() => { S.sec++; $("clock").textContent = tNow(); }, 1000);
 });

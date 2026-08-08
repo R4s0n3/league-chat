@@ -79,8 +79,9 @@ function buildSystem(player, from, maxWords, spicy) {
       "3) Always lowercase English, even if someone else writes in German or any other language - your line stays English. " +
       "4) Flame targets the game only: kills, deaths, cs, lane, champion, build, picks. Short mom-flames and one-liners about gameplay are ok. " +
       "5) " + mode + " " +
+      "6) RATE THE MOOD: append <<tox:N>> at the very end of your reply, where N is -2, -1, 0, 1 or 2. +N = the chat just got MORE toxic/flamey (insults, ints, flames, '?', report threats), -N = it calmed down / got friendlier (gg, wp, thanks, mb, helps), 0 = neutral. Base it on the current chat log and your own reply, not the whole game. " +
       "LIMITS: no group slurs, no real threats or violence, nothing about anyone's real life or real family. " +
-      "Reply ONLY with the message text, no quotes, no meta-notes, no nicknames in front of it. Others: " + ROSTER.concat(["DariusBurgus", "PrivacyNanna", "LZ_Support", "Terbar", "DueToZed"]).join(", ") + ".",
+      "Reply ONLY with the message text followed by the <<tox>> tag, no quotes, no meta-notes, no nicknames in front of it. Others: " + ROSTER.concat(["DariusBurgus", "PrivacyNanna", "LZ_Support", "Terbar", "DueToZed"]).join(", ") + ".",
   };
 }
 
@@ -216,7 +217,13 @@ async function handleChat(req, res) {
     if (!reply.trim()) return json(res, 502, { error: "empty reply" + note });
     let out = reply.trim();
     if ((out.startsWith('"') && out.endsWith('"')) || (out.startsWith("'") && out.endsWith("'"))) out = out.slice(1, -1).trim();
-    json(res, 200, { reply: out });
+    let tox = null;
+    const toxM = out.match(/<<tox:\s*([+-]?\d+(?:\.\d+)?)\s*>>/i);
+    if (toxM) {
+      out = out.replace(/<<tox:\s*[+-]?\d+(?:\.\d+)?\s*>>/gi, " ").replace(/\s+/g, " ").trim();
+      tox = Math.max(-2, Math.min(2, parseFloat(toxM[1]) || 0));
+    }
+    json(res, 200, { reply: out, tox });
   } catch (err) {
     console.error("OpenRouter error:", err.message);
     json(res, 502, { error: String(err.message || err) });
